@@ -18,8 +18,9 @@ platforms := linux-amd64 linux-386 linux-arm linux-arm64 darwin-amd64 solaris-am
 compressed-platforms := linux-amd64-slim linux-arm-slim linux-arm64-slim darwin-amd64-slim windows-amd64-slim.exe
 
 clean:
-	rm -Rf $(PREFIX)/bin/*
-	rm -f $(PREFIX)/*.[ci]id
+	-rm -Rf $(PREFIX)/bin/*
+	-rm -f $(PREFIX)/*.[ci]id
+	-rm -f $(PREFIX)/version.txt
 
 build-x: $(patsubst %,$(PREFIX)/bin/$(PKG_NAME)_%,$(platforms))
 
@@ -99,11 +100,11 @@ endif
 
 release: tag-release build-release push-changelog
 
-version.txt:
-	@go run version_bump.go
+$(PREFIX)/version.txt:
+	@go run version_bump.go > $@
 
 tag-release: version.txt
-	git tag -a v2.0.1 -m "Releasing v2.0.1" && git push --tags
+	git tag -a $(shell cat $<) -m "Releasing $(shell cat $<)" && git push --tags
 
 push-changelog: gen-changelog
 	@echo "TODO - use chandler maybe?"
