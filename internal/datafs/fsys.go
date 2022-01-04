@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"io/fs"
 	"net/url"
-	"path"
-	"path/filepath"
+	"strings"
 
 	"github.com/hairyhenderson/go-fsimpl"
+	"github.com/hairyhenderson/gomplate/v4/internal/urlhelpers"
 )
 
 type fsProviderCtxKey struct{}
@@ -28,50 +28,11 @@ func FSProviderFromContext(ctx context.Context) fsimpl.FSProvider {
 	return nil
 }
 
-// ParseSourceURL parses a datasource URL value, which may be '-' (for stdin://),
-// or it may be a Windows path (with driver letter and back-slash separators) or
-// UNC, or it may be relative. It also might just be a regular absolute URL...
-// In all cases it returns a correct URL for the value. It may be a relative URL
-// in which case the scheme should be assumed to be 'file'
-func ParseSourceURL(value string) (*url.URL, error) {
-	if value == "-" {
-		value = "stdin://"
-	}
-	value = filepath.ToSlash(value)
-	// handle absolute Windows paths
-	volName := ""
-	if volName = filepath.VolumeName(value); volName != "" {
-		// handle UNCs
-		if len(volName) > 2 {
-			value = "file:" + value
-		} else {
-			value = "file:///" + value
-		}
-	}
-	srcURL, err := url.Parse(value)
-	if err != nil {
-		return nil, err
-	}
-
-	if volName != "" && len(srcURL.Path) >= 3 {
-		if srcURL.Path[0] == '/' && srcURL.Path[2] == ':' {
-			srcURL.Path = srcURL.Path[1:]
-		}
-	}
-
-	// if it's an absolute path with no scheme, assume it's a file
-	if srcURL.Scheme == "" && path.IsAbs(srcURL.Path) {
-		srcURL.Scheme = "file"
-	}
-
-	return srcURL, nil
-}
-
 // FSysForPath returns an [io/fs.FS] for the given path (which may be an URL),
 // rooted at /. A [fsimpl.FSProvider] is required to be present in ctx,
 // otherwise an error is returned.
 func FSysForPath(ctx context.Context, path string) (fs.FS, error) {
-	u, err := ParseSourceURL(path)
+	u, err := urlhelpers.ParseSourceURL(path)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +42,16 @@ func FSysForPath(ctx context.Context, path string) (fs.FS, error) {
 		return nil, fmt.Errorf("no filesystem provider in context")
 	}
 
-	fsys, err := fsp.New(&url.URL{Scheme: u.Scheme, Path: "/"})
+	// git URLs are special - they have double-slashes that separate a repo from
+	// a path in the repo. A missing double-slash means the path is the root.
+	switch u.Scheme {
+	case "git", "git+file", "git+http", "git+https", "git+ssh":
+		u.Path, _, _ = strings.Cut(u.Path, "//")
+	default:
+		u.Path = "/"
+	}
+
+	fsys, err := fsp.New(u)
 	if err != nil {
 		return nil, fmt.Errorf("filesystem provider for %q unavailable: %w", path, err)
 	}

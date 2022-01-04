@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hairyhenderson/gomplate/v4/internal/datafs"
 	"github.com/hairyhenderson/gomplate/v4/internal/iohelpers"
+	"github.com/hairyhenderson/gomplate/v4/internal/urlhelpers"
 	"github.com/hairyhenderson/yaml"
 )
 
@@ -111,7 +111,7 @@ func (d *DataSource) UnmarshalYAML(value *yaml.Node) error {
 	if err != nil {
 		return err
 	}
-	u, err := datafs.ParseSourceURL(r.URL)
+	u, err := urlhelpers.ParseSourceURL(r.URL)
 	if err != nil {
 		return fmt.Errorf("could not parse datasource URL %q: %w", r.URL, err)
 	}
@@ -374,7 +374,7 @@ func parseDatasourceArg(value string) (alias string, ds DataSource, err error) {
 		}
 	}
 
-	ds.URL, err = datafs.ParseSourceURL(u)
+	ds.URL, err = urlhelpers.ParseSourceURL(u)
 
 	return alias, ds, err
 }

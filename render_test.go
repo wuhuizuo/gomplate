@@ -10,7 +10,6 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/hairyhenderson/gomplate/v4/data"
 	"github.com/hairyhenderson/gomplate/v4/internal/datafs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -48,7 +47,7 @@ func TestRenderTemplate(t *testing.T) {
 			"world": {URL: wu},
 		},
 	})
-	ctx = data.ContextWithStdin(ctx, strings.NewReader("hello"))
+	ctx = datafs.ContextWithStdin(ctx, strings.NewReader("hello"))
 	out = &bytes.Buffer{}
 	err = tr.Render(ctx, "test", `{{ .hi | toUpper }} {{ (ds "world") | toUpper }}`, out)
 	require.NoError(t, err)

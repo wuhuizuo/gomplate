@@ -10,15 +10,28 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/hairyhenderson/go-fsimpl"
+	"github.com/hairyhenderson/go-fsimpl/awssmfs"
+	"github.com/hairyhenderson/go-fsimpl/awssmpfs"
+	"github.com/hairyhenderson/go-fsimpl/blobfs"
+	"github.com/hairyhenderson/go-fsimpl/consulfs"
+	"github.com/hairyhenderson/go-fsimpl/gitfs"
+	"github.com/hairyhenderson/go-fsimpl/httpfs"
+	"github.com/hairyhenderson/go-fsimpl/vaultfs"
 	"github.com/hairyhenderson/gomplate/v4/data"
 	"github.com/hairyhenderson/gomplate/v4/funcs" //nolint:staticcheck
 	"github.com/hairyhenderson/gomplate/v4/internal/config"
+	"github.com/hairyhenderson/gomplate/v4/internal/datafs"
 )
 
 // Options for template rendering.
 //
 // Experimental: subject to breaking changes before the next major release
 type Options struct {
+	// FSProvider - allows lookups of data source filesystems. Defaults to
+	// [DefaultFSProvider].
+	FSProvider fsimpl.FSProvider
+
 	// Datasources - map of datasources to be read on demand when the
 	// 'datasource'/'ds'/'include' functions are used.
 	Datasources map[string]Datasource
@@ -100,6 +113,7 @@ type Datasource struct {
 type Renderer struct {
 	//nolint:staticcheck
 	data        *data.Data
+	fsp         fsimpl.FSProvider
 	nested      config.Templates
 	funcs       template.FuncMap
 	lDelim      string
@@ -162,6 +176,10 @@ func NewRenderer(opts Options) *Renderer {
 		opts.Funcs = template.FuncMap{}
 	}
 
+	if opts.FSProvider == nil {
+		opts.FSProvider = DefaultFSProvider
+	}
+
 	return &Renderer{
 		nested:      nested,
 		data:        d,
@@ -169,6 +187,7 @@ func NewRenderer(opts Options) *Renderer {
 		tctxAliases: tctxAliases,
 		lDelim:      opts.LDelim,
 		rDelim:      opts.RDelim,
+		fsp:         opts.FSProvider,
 	}
 }
 
@@ -192,10 +211,9 @@ type Template struct {
 //
 // Experimental: subject to breaking changes before the next major release
 func (t *Renderer) RenderTemplates(ctx context.Context, templates []Template) error {
-	// we need to inject the current context into the Data value, because
-	// the Datasource method may need it
-	// TODO: remove this in v4
-	t.data.Ctx = ctx
+	if datafs.FSProviderFromContext(ctx) == nil {
+		ctx = datafs.ContextWithFSProvider(ctx, t.fsp)
+	}
 
 	// configure the template context with the refreshed Data value
 	// only done here because the data context may have changed
@@ -282,4 +300,27 @@ func (t *Renderer) Render(ctx context.Context, name, text string, wr io.Writer) 
 	return t.RenderTemplates(ctx, []Template{
 		{Name: name, Text: text, Writer: wr},
 	})
+}
+
+// DefaultFSProvider is the default filesystem provider used by gomplate
+var DefaultFSProvider fsimpl.FSProvider
+
+func init() {
+	fsp := fsimpl.NewMux()
+	// go-fsimpl filesystems (same as autofs, except for filefs)
+	fsp.Add(awssmfs.FS)
+	fsp.Add(awssmpfs.FS)
+	fsp.Add(blobfs.FS)
+	fsp.Add(consulfs.FS)
+	fsp.Add(gitfs.FS)
+	fsp.Add(httpfs.FS)
+	fsp.Add(vaultfs.FS)
+	// custom gomplate filesystem(s)
+	fsp.Add(datafs.EnvFS)
+	fsp.Add(datafs.StdinFS)
+	fsp.Add(datafs.MergeFS)
+	// use this instead of filefs to handle working directory
+	fsp.Add(datafs.WdFS)
+
+	DefaultFSProvider = fsp
 }

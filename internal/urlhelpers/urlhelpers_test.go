@@ -1,4 +1,4 @@
-package datafs
+package urlhelpers
 
 import (
 	"net/url"
